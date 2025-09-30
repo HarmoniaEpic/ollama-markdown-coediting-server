@@ -3,17 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown Collaborative Editor v6.4</title>
+    <title>Markdown Collaborative Editor v6.5</title>
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        /* ========================================
+           CSS Variables for Theming
+        ======================================== */
+        :root {
+            /* Light Theme (Default) */
+            --bg-primary: #f8f9fa;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #ecf0f1;
+            --bg-header: #2c3e50;
+            --bg-message-user: #e3f2fd;
+            --bg-message-system: #f5f5f5;
+            --bg-updating: #fffbf0;
+            
+            --text-primary: #2c3e50;
+            --text-secondary: #666;
+            --text-light: #95a5a6;
+            --text-header: #ffffff;
+            
+            --border-color: #ddd;
+            --border-light: #bdc3c7;
+            
+            --accent-primary: #3498db;
+            --accent-secondary: #2196f3;
+            --accent-success: #27ae60;
+            --accent-error: #e74c3c;
+            
+            /* Layout */
+            --font-size: 14px;
+            --chat-width: 450px;
+        }
+        
+        [data-theme="dark"] {
+            /* Dark Theme */
+            --bg-primary: #1e1e1e;
+            --bg-secondary: #252526;
+            --bg-tertiary: #2d2d30;
+            --bg-header: #1e1e1e;
+            --bg-message-user: #0e639c;
+            --bg-message-system: #3c3c3c;
+            --bg-updating: #3e3e2e;
+            
+            --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --text-light: #808080;
+            --text-header: #ffffff;
+            
+            --border-color: #3c3c3c;
+            --border-light: #505050;
+            
+            --accent-primary: #0e639c;
+            --accent-secondary: #1177bb;
+            --accent-success: #4ec9b0;
+            --accent-error: #f48771;
+        }
+        
+        /* ========================================
+           Base Styles
+        ======================================== */
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+        }
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
             display: flex;
             height: 100vh;
             overflow: hidden;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: var(--font-size);
+            transition: background 0.3s ease, color 0.3s ease;
         }
         
+        /* ========================================
+           Header
+        ======================================== */
         #main {
             flex: 1;
             display: flex;
@@ -21,8 +92,8 @@
         }
         
         #header {
-            background: #2c3e50;
-            color: white;
+            background: var(--bg-header);
+            color: var(--text-header);
             padding: 10px 20px;
             display: flex;
             justify-content: space-between;
@@ -30,6 +101,7 @@
             min-height: 60px;
             flex-wrap: wrap;
             gap: 15px;
+            transition: background 0.3s ease;
         }
         
         #room-info {
@@ -41,7 +113,7 @@
         #connection-status {
             width: 10px;
             height: 10px;
-            background: #27ae60;
+            background: var(--accent-success);
             border-radius: 50%;
             animation: pulse 2s infinite;
         }
@@ -52,7 +124,7 @@
         }
         
         #connection-status.disconnected {
-            background: #e74c3c;
+            background: var(--accent-error);
             animation: none;
         }
         
@@ -69,7 +141,7 @@
             background: rgba(255,255,255,0.2);
         }
         
-        /* 新規追加: コントロールパネル */
+        /* Controls */
         #controls {
             display: flex;
             gap: 15px;
@@ -110,19 +182,36 @@
             color: white;
         }
         
-        #reload-templates {
+        [data-theme="dark"] #model-select option,
+        [data-theme="dark"] #template-select option {
+            background: #1e1e1e;
+        }
+        
+        /* Header Buttons */
+        .header-btn {
             background: rgba(255,255,255,0.1);
             border: 1px solid rgba(255,255,255,0.3);
             color: white;
             font-size: 16px;
             cursor: pointer;
-            padding: 4px 8px;
+            padding: 6px 12px;
             border-radius: 4px;
-            transition: transform 0.2s, background 0.2s;
+            transition: background 0.2s, transform 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
         
-        #reload-templates:hover {
+        .header-btn:hover {
             background: rgba(255,255,255,0.2);
+        }
+        
+        .header-btn:active {
+            transform: scale(0.95);
+        }
+        
+        #reload-templates {
+            padding: 4px 8px;
         }
         
         #reload-templates:active {
@@ -134,49 +223,390 @@
             opacity: 0.9;
         }
         
+        /* ========================================
+           Settings Menu (Hamburger)
+        ======================================== */
+        .menu-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 999;
+        }
+        
+        .menu-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        #settings-menu {
+            position: fixed;
+            right: -350px;
+            top: 0;
+            width: 350px;
+            height: 100vh;
+            background: var(--bg-secondary);
+            box-shadow: -2px 0 10px rgba(0,0,0,0.2);
+            transition: right 0.3s ease;
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        #settings-menu.open {
+            right: 0;
+        }
+        
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        .settings-header h2 {
+            font-size: 20px;
+            color: var(--text-primary);
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .close-btn:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        .setting-section {
+            margin-bottom: 25px;
+        }
+        
+        .setting-section h3 {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .setting-option {
+            margin-bottom: 10px;
+        }
+        
+        .setting-option label {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: var(--bg-primary);
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .setting-option input[type="radio"] {
+            margin-right: 10px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .setting-option label:hover {
+            border-color: var(--accent-primary);
+            background: var(--bg-tertiary);
+        }
+        
+        .setting-option input[type="radio"]:checked + label,
+        .setting-option label:has(input[type="radio"]:checked) {
+            border-color: var(--accent-primary);
+            background: var(--bg-tertiary);
+        }
+        
+        .setting-option input[type="checkbox"] {
+            margin-right: 10px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .font-size-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: var(--bg-primary);
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+        }
+        
+        .font-size-btn {
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+        
+        .font-size-btn:hover {
+            background: var(--accent-secondary);
+        }
+        
+        .font-size-value {
+            flex: 1;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        .reset-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent-error);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+        
+        .reset-btn:hover {
+            opacity: 0.9;
+        }
+        
+        /* ========================================
+           Content Area
+        ======================================== */
         #content {
             flex: 1;
             display: flex;
             overflow: hidden;
         }
         
-        #template {
+        /* Chat Position: Right (Default) */
+        #content:not(.chat-left) #markdown-container {
+            order: 1;
+        }
+        
+        #content:not(.chat-left) #sidebar {
+            order: 2;
+        }
+        
+        /* Chat Position: Left */
+        #content.chat-left #sidebar {
+            order: 1;
+            border-left: none;
+            border-right: 1px solid var(--border-color);
+        }
+        
+        #content.chat-left #markdown-container {
+            order: 2;
+        }
+        
+        /* ========================================
+           Markdown Container
+        ======================================== */
+        #markdown-container {
             flex: 2;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-primary);
+            overflow: hidden;
+        }
+        
+        .markdown-tabs {
+            display: flex;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 10px;
+        }
+        
+        .markdown-tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-secondary);
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .markdown-tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-primary);
+        }
+        
+        .markdown-tab.active {
+            color: var(--accent-primary);
+            border-bottom-color: var(--accent-primary);
+            font-weight: 600;
+        }
+        
+        .markdown-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Split View */
+        .markdown-content.split-view {
+            display: flex;
+        }
+        
+        .markdown-content.split-view #template,
+        .markdown-content.split-view #preview {
+            display: block !important;
+            width: 50%;
+            border-right: 1px solid var(--border-color);
+        }
+        
+        .markdown-content.split-view #preview {
+            border-right: none;
+        }
+        
+        #template, #preview {
+            flex: 1;
             padding: 20px;
             overflow-y: auto;
-            background: #f8f9fa;
+            background: var(--bg-primary);
             white-space: pre-wrap;
             font-family: 'Courier New', Consolas, monospace;
             line-height: 1.6;
-            font-size: 14px;
+            font-size: var(--font-size);
+            color: var(--text-primary);
+            transition: background 0.3s ease;
         }
         
         #template.updating {
-            background: #fffbf0;
+            background: var(--bg-updating);
             transition: background 0.5s;
         }
         
+        #preview {
+            display: none;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+            white-space: normal;
+        }
+        
+        #preview h1, #preview h2, #preview h3 {
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            color: var(--text-primary);
+        }
+        
+        #preview h1 { font-size: 2em; }
+        #preview h2 { font-size: 1.5em; }
+        #preview h3 { font-size: 1.25em; }
+        
+        #preview p {
+            margin-bottom: 1em;
+        }
+        
+        #preview ul, #preview ol {
+            margin-left: 2em;
+            margin-bottom: 1em;
+        }
+        
+        #preview code {
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', Consolas, monospace;
+        }
+        
+        #preview pre {
+            background: var(--bg-tertiary);
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin-bottom: 1em;
+        }
+        
+        #preview pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        #preview blockquote {
+            border-left: 4px solid var(--accent-primary);
+            padding-left: 1em;
+            margin-left: 0;
+            color: var(--text-secondary);
+        }
+        
+        #preview table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 1em;
+        }
+        
+        #preview th, #preview td {
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        #preview th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+        }
+        
+        #preview a {
+            color: var(--accent-primary);
+            text-decoration: none;
+        }
+        
+        #preview a:hover {
+            text-decoration: underline;
+        }
+        
+        /* ========================================
+           Sidebar (Chat)
+        ======================================== */
         #sidebar {
-            flex: 1;
-            border-left: 1px solid #ddd;
+            width: var(--chat-width);
+            min-width: 300px;
+            max-width: 600px;
+            border-left: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
-            max-width: 450px;
-            min-width: 300px;
+            background: var(--bg-secondary);
+            transition: width 0.3s ease;
         }
         
         #messages {
             flex: 1;
             padding: 10px;
             overflow-y: auto;
-            background: white;
+            background: var(--bg-secondary);
         }
         
         .message {
             margin: 8px 0;
             padding: 8px 10px;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: var(--font-size);
             animation: slideIn 0.3s ease-out;
         }
         
@@ -192,65 +622,69 @@
         }
         
         .message.user {
-            background: #e3f2fd;
-            border-left: 3px solid #2196f3;
+            background: var(--bg-message-user);
+            border-left: 3px solid var(--accent-secondary);
         }
         
         .message.system {
-            background: #f5f5f5;
+            background: var(--bg-message-system);
             font-style: italic;
-            color: #666;
-            font-size: 13px;
+            color: var(--text-secondary);
+            font-size: calc(var(--font-size) - 1px);
         }
         
         .message-header {
-            font-size: 12px;
-            color: #666;
+            font-size: calc(var(--font-size) - 2px);
+            color: var(--text-secondary);
             margin-bottom: 4px;
         }
         
         .message-header .name {
             font-weight: 600;
-            color: #2c3e50;
+            color: var(--text-primary);
         }
         
         #input-area {
             padding: 15px;
-            background: #ecf0f1;
-            border-top: 1px solid #ddd;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border-color);
         }
         
         #input {
             width: 100%;
             padding: 10px 12px;
-            border: 1px solid #bdc3c7;
+            border: 1px solid var(--border-light);
             border-radius: 4px;
-            font-size: 14px;
+            font-size: var(--font-size);
             font-family: inherit;
             transition: border-color 0.2s;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
         }
         
         #input:focus {
             outline: none;
-            border-color: #3498db;
+            border-color: var(--accent-primary);
         }
         
         #help {
             margin-top: 8px;
-            font-size: 12px;
-            color: #7f8c8d;
+            font-size: calc(var(--font-size) - 2px);
+            color: var(--text-light);
             line-height: 1.4;
         }
         
         #user-list {
             margin-top: 5px;
-            font-size: 12px;
-            color: #95a5a6;
+            font-size: calc(var(--font-size) - 2px);
+            color: var(--text-light);
         }
         
-        /* エラー表示 */
+        /* ========================================
+           Error Banner
+        ======================================== */
         #error-banner {
-            background: #e74c3c;
+            background: var(--accent-error);
             color: white;
             padding: 10px 20px;
             text-align: center;
@@ -271,7 +705,9 @@
             }
         }
         
-        /* レスポンシブ対応 */
+        /* ========================================
+           Responsive Design
+        ======================================== */
         @media (max-width: 768px) {
             #header {
                 flex-direction: column;
@@ -288,16 +724,61 @@
             
             #sidebar {
                 max-width: 100%;
+                width: 100%;
                 min-height: 300px;
                 border-left: none;
-                border-top: 1px solid #ddd;
+                border-top: 1px solid var(--border-color);
             }
+            
+            #content.chat-left #sidebar {
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+            }
+            
+            #settings-menu {
+                width: 100%;
+                right: -100%;
+            }
+            
+            .markdown-content.split-view {
+                flex-direction: column;
+            }
+            
+            .markdown-content.split-view #template,
+            .markdown-content.split-view #preview {
+                width: 100%;
+                height: 50%;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+            }
+        }
+        
+        /* ========================================
+           Scrollbar Styling
+        ======================================== */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-light);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-light);
         }
     </style>
 </head>
 <body>
     <div id="main">
         <div id="error-banner"></div>
+        
         <div id="header">
             <div id="room-info">
                 <div id="connection-status" title="接続状態"></div>
@@ -305,7 +786,7 @@
                 <div id="my-name" onclick="changeName()" title="クリックして名前を変更">名前: ユーザー</div>
             </div>
             
-            <!-- コントロールパネル -->
+            <!-- Controls -->
             <div id="controls">
                 <div class="control-group">
                     <label>🤖 モデル:</label>
@@ -318,8 +799,14 @@
                     <select id="template-select" title="テンプレートを選択">
                         <option value="">読み込み中...</option>
                     </select>
-                    <button id="reload-templates" title="テンプレート一覧を再読み込み">🔄</button>
+                    <button id="reload-templates" class="header-btn" title="テンプレート一覧を再読み込み">🔄</button>
                 </div>
+                <button id="download-markdown" class="header-btn" title="Markdownをダウンロード">
+                    📥 ダウンロード
+                </button>
+                <button id="menu-toggle" class="header-btn" title="設定を開く">
+                    ☰ 設定
+                </button>
             </div>
             
             <div class="users">
@@ -328,9 +815,135 @@
             </div>
         </div>
         
-        <div id="content">
-            <div id="template">テンプレート読み込み中...</div>
+        <!-- Settings Menu -->
+        <div class="menu-overlay" id="menu-overlay"></div>
+        <div id="settings-menu">
+            <div class="settings-header">
+                <h2>⚙️ 設定</h2>
+                <button class="close-btn" id="close-settings">×</button>
+            </div>
             
+            <!-- Chat Position -->
+            <div class="setting-section">
+                <h3>📐 チャット位置</h3>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="chat-position" value="right" checked>
+                        右側（デフォルト）
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="chat-position" value="left">
+                        左側
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Chat Width -->
+            <div class="setting-section">
+                <h3>📏 チャット幅</h3>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="chat-width" value="300">
+                        狭い (300px)
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="chat-width" value="450" checked>
+                        普通 (450px)
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="chat-width" value="600">
+                        広い (600px)
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Markdown View -->
+            <div class="setting-section">
+                <h3>📝 Markdown表示</h3>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="markdown-view" value="edit" checked>
+                        編集のみ
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="markdown-view" value="preview">
+                        プレビューのみ
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="markdown-view" value="split">
+                        分割表示
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Theme -->
+            <div class="setting-section">
+                <h3>🎨 テーマ</h3>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="theme" value="light" checked>
+                        ライトモード
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="theme" value="dark">
+                        ダークモード
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Font Size -->
+            <div class="setting-section">
+                <h3>📖 フォントサイズ</h3>
+                <div class="font-size-control">
+                    <button class="font-size-btn" id="font-decrease">－</button>
+                    <div class="font-size-value" id="font-size-display">14px</div>
+                    <button class="font-size-btn" id="font-increase">＋</button>
+                </div>
+            </div>
+            
+            <!-- Other Settings -->
+            <div class="setting-section">
+                <h3>⚙️ その他</h3>
+                <div class="setting-option">
+                    <label>
+                        <input type="checkbox" id="auto-scroll" checked>
+                        自動スクロール
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Reset Button -->
+            <div class="setting-section">
+                <button class="reset-btn" id="reset-settings">設定をリセット</button>
+            </div>
+        </div>
+        
+        <div id="content">
+            <!-- Markdown Container -->
+            <div id="markdown-container">
+                <div class="markdown-tabs">
+                    <button class="markdown-tab active" data-view="edit">編集</button>
+                    <button class="markdown-tab" data-view="preview">プレビュー</button>
+                </div>
+                <div class="markdown-content">
+                    <div id="template">テンプレート読み込み中...</div>
+                    <div id="preview"></div>
+                </div>
+            </div>
+            
+            <!-- Sidebar (Chat) -->
             <div id="sidebar">
                 <div id="messages"></div>
                 <div id="input-area">
@@ -348,11 +961,13 @@
     </div>
 
     <script>
-        // 設定
+        // ========================================
+        // Configuration
+        // ========================================
         const WS_PORT = 8080;
         const WS_URL = `ws://${location.hostname}:${WS_PORT}`;
         
-        // 初期設定
+        // Initial settings
         const params = new URLSearchParams(location.search);
         const roomName = params.get('room') || 'default';
         let userName = params.get('name') || localStorage.getItem('userName') || '';
@@ -360,17 +975,258 @@
         let userId = null;
         let ws = null;
         let reconnectTimer = null;
+        let currentTemplate = '';
         
-        document.getElementById('room-name').textContent = `ルーム: ${roomName}`;
+        // ========================================
+        // Settings Management
+        // ========================================
+        const DEFAULT_SETTINGS = {
+            chatPosition: 'right',
+            chatWidth: 450,
+            theme: 'light',
+            fontSize: 14,
+            markdownView: 'edit',
+            autoScroll: true
+        };
         
-        // HTMLエスケープ（XSS対策）
+        let userSettings = { ...DEFAULT_SETTINGS };
+        
+        // Load settings from localStorage
+        function loadSettings() {
+            const saved = localStorage.getItem('markdown-editor-settings');
+            if (saved) {
+                try {
+                    userSettings = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+                } catch (e) {
+                    console.error('Failed to load settings:', e);
+                }
+            }
+            applySettings();
+        }
+        
+        // Save settings to localStorage
+        function saveSettings() {
+            localStorage.setItem('markdown-editor-settings', JSON.stringify(userSettings));
+        }
+        
+        // Apply settings to UI
+        function applySettings() {
+            // Chat position
+            const content = document.getElementById('content');
+            content.classList.toggle('chat-left', userSettings.chatPosition === 'left');
+            
+            // Chat width
+            document.documentElement.style.setProperty('--chat-width', `${userSettings.chatWidth}px`);
+            
+            // Theme
+            document.documentElement.setAttribute('data-theme', userSettings.theme);
+            
+            // Font size
+            document.documentElement.style.setProperty('--font-size', `${userSettings.fontSize}px`);
+            document.getElementById('font-size-display').textContent = `${userSettings.fontSize}px`;
+            
+            // Markdown view
+            applyMarkdownView();
+            
+            // Update form controls
+            document.querySelector(`input[name="chat-position"][value="${userSettings.chatPosition}"]`).checked = true;
+            document.querySelector(`input[name="chat-width"][value="${userSettings.chatWidth}"]`).checked = true;
+            document.querySelector(`input[name="theme"][value="${userSettings.theme}"]`).checked = true;
+            document.querySelector(`input[name="markdown-view"][value="${userSettings.markdownView}"]`).checked = true;
+            document.getElementById('auto-scroll').checked = userSettings.autoScroll;
+        }
+        
+        // Apply markdown view setting
+        function applyMarkdownView() {
+            const view = userSettings.markdownView;
+            const content = document.querySelector('.markdown-content');
+            const template = document.getElementById('template');
+            const preview = document.getElementById('preview');
+            const tabs = document.querySelectorAll('.markdown-tab');
+            
+            // Reset
+            content.classList.remove('split-view');
+            template.style.display = 'block';
+            preview.style.display = 'none';
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            if (view === 'edit') {
+                tabs[0].classList.add('active');
+                template.style.display = 'block';
+                preview.style.display = 'none';
+            } else if (view === 'preview') {
+                tabs[1].classList.add('active');
+                template.style.display = 'none';
+                preview.style.display = 'block';
+                updatePreview();
+            } else if (view === 'split') {
+                content.classList.add('split-view');
+                template.style.display = 'block';
+                preview.style.display = 'block';
+                tabs[0].classList.add('active');
+                tabs[1].classList.add('active');
+                updatePreview();
+            }
+        }
+        
+        // ========================================
+        // Settings Menu Event Listeners
+        // ========================================
+        document.getElementById('menu-toggle').addEventListener('click', () => {
+            document.getElementById('settings-menu').classList.add('open');
+            document.getElementById('menu-overlay').classList.add('open');
+        });
+        
+        document.getElementById('close-settings').addEventListener('click', closeSettings);
+        document.getElementById('menu-overlay').addEventListener('click', closeSettings);
+        
+        function closeSettings() {
+            document.getElementById('settings-menu').classList.remove('open');
+            document.getElementById('menu-overlay').classList.remove('open');
+        }
+        
+        // Chat position
+        document.querySelectorAll('input[name="chat-position"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                userSettings.chatPosition = e.target.value;
+                saveSettings();
+                applySettings();
+            });
+        });
+        
+        // Chat width
+        document.querySelectorAll('input[name="chat-width"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                userSettings.chatWidth = parseInt(e.target.value);
+                saveSettings();
+                applySettings();
+            });
+        });
+        
+        // Theme
+        document.querySelectorAll('input[name="theme"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                userSettings.theme = e.target.value;
+                saveSettings();
+                applySettings();
+            });
+        });
+        
+        // Markdown view
+        document.querySelectorAll('input[name="markdown-view"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                userSettings.markdownView = e.target.value;
+                saveSettings();
+                applySettings();
+            });
+        });
+        
+        // Font size
+        document.getElementById('font-decrease').addEventListener('click', () => {
+            if (userSettings.fontSize > 10) {
+                userSettings.fontSize--;
+                saveSettings();
+                applySettings();
+            }
+        });
+        
+        document.getElementById('font-increase').addEventListener('click', () => {
+            if (userSettings.fontSize < 24) {
+                userSettings.fontSize++;
+                saveSettings();
+                applySettings();
+            }
+        });
+        
+        // Auto scroll
+        document.getElementById('auto-scroll').addEventListener('change', (e) => {
+            userSettings.autoScroll = e.target.checked;
+            saveSettings();
+        });
+        
+        // Reset settings
+        document.getElementById('reset-settings').addEventListener('click', () => {
+            if (confirm('設定をデフォルトに戻しますか？')) {
+                userSettings = { ...DEFAULT_SETTINGS };
+                saveSettings();
+                applySettings();
+            }
+        });
+        
+        // ========================================
+        // Markdown Tab Switching
+        // ========================================
+        document.querySelectorAll('.markdown-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const view = tab.dataset.view;
+                
+                // Don't switch in split mode
+                if (userSettings.markdownView === 'split') return;
+                
+                document.querySelectorAll('.markdown-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                const template = document.getElementById('template');
+                const preview = document.getElementById('preview');
+                
+                if (view === 'edit') {
+                    template.style.display = 'block';
+                    preview.style.display = 'none';
+                } else if (view === 'preview') {
+                    template.style.display = 'none';
+                    preview.style.display = 'block';
+                    updatePreview();
+                }
+            });
+        });
+        
+        // ========================================
+        // Markdown Preview
+        // ========================================
+        let debounceTimer;
+        
+        function updatePreview() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const preview = document.getElementById('preview');
+                try {
+                    preview.innerHTML = marked.parse(currentTemplate);
+                } catch (error) {
+                    console.error('Markdown parse error:', error);
+                    preview.innerHTML = '<p style="color: red;">プレビューの生成に失敗しました</p>';
+                }
+            }, 100);
+        }
+        
+        // ========================================
+        // Markdown Download
+        // ========================================
+        document.getElementById('download-markdown').addEventListener('click', () => {
+            const blob = new Blob([currentTemplate], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${roomName}_${new Date().toISOString().slice(0, 10)}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            console.log(`📥 Markdownをダウンロード: ${a.download}`);
+        });
+        
+        // ========================================
+        // HTML Escape (XSS Protection)
+        // ========================================
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
         
-        // モデル一覧を読み込み
+        // ========================================
+        // Models Loading
+        // ========================================
         async function loadModels() {
             try {
                 const response = await fetch('/api/models');
@@ -389,10 +1245,7 @@
                     select.appendChild(option);
                 });
                 
-                // 情報表示
                 console.log('使用中のモデル:', data.current);
-                console.log('推奨モデル:', data.primary);
-                console.log('フォールバック:', data.fallback);
             } catch (error) {
                 console.error('モデル一覧の取得に失敗:', error);
                 const select = document.getElementById('model-select');
@@ -400,7 +1253,9 @@
             }
         }
         
-        // テンプレート一覧を読み込み
+        // ========================================
+        // Templates Loading
+        // ========================================
         async function loadTemplates() {
             try {
                 const response = await fetch('/api/templates');
@@ -423,9 +1278,7 @@
                     select.appendChild(option);
                 });
                 
-                // URLパラメータまたはデフォルトを選択
                 select.value = templateParam;
-                
                 console.log('利用可能なテンプレート:', data.templates.length + '件');
             } catch (error) {
                 console.error('テンプレート一覧の取得に失敗:', error);
@@ -434,13 +1287,12 @@
             }
         }
         
-        // テンプレート変更時
+        // Template change
         document.getElementById('template-select').addEventListener('change', (e) => {
             const filename = e.target.value;
             if (!filename) return;
             
             try {
-                // WebSocketでサーバーに通知
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
                         type: 'change_template',
@@ -456,13 +1308,15 @@
             }
         });
         
-        // リロードボタン
+        // Reload templates
         document.getElementById('reload-templates').addEventListener('click', () => {
             loadTemplates();
             console.log('テンプレート一覧を再読み込みしました');
         });
         
-        // WebSocket接続
+        // ========================================
+        // WebSocket Connection
+        // ========================================
         function connect() {
             clearTimeout(reconnectTimer);
             const wsUrl = `${WS_URL}?room=${encodeURIComponent(roomName)}&name=${encodeURIComponent(userName)}&template=${encodeURIComponent(templateParam)}`;
@@ -475,7 +1329,6 @@
                     document.getElementById('connection-status').classList.remove('disconnected');
                     hideError();
                     
-                    // モデルとテンプレートの一覧を読み込み
                     loadModels();
                     loadTemplates();
                 };
@@ -507,13 +1360,14 @@
             }
         }
         
-        // エラー表示
+        // ========================================
+        // Error Display
+        // ========================================
         function showError(message) {
             const banner = document.getElementById('error-banner');
             banner.textContent = message;
             banner.classList.add('show');
             
-            // 5秒後に自動で消す（接続エラー以外）
             if (!message.includes('切断') && !message.includes('再接続')) {
                 setTimeout(() => {
                     hideError();
@@ -525,7 +1379,9 @@
             document.getElementById('error-banner').classList.remove('show');
         }
         
-        // サーバーメッセージ処理
+        // ========================================
+        // Server Message Handling
+        // ========================================
         function handleServerMessage(data) {
             switch(data.type) {
                 case 'init':
@@ -533,18 +1389,29 @@
                     userName = data.userName;
                     localStorage.setItem('userName', userName);
                     document.getElementById('my-name').textContent = `名前: ${userName}`;
-                    document.getElementById('template').textContent = data.template;
+                    currentTemplate = data.template;
+                    document.getElementById('template').textContent = currentTemplate;
                     updateUserList(data.users);
-                    // 既存メッセージ表示
                     document.getElementById('messages').innerHTML = '';
                     data.messages.forEach(msg => addMessage(msg));
+                    
+                    // Update preview if needed
+                    if (userSettings.markdownView === 'preview' || userSettings.markdownView === 'split') {
+                        updatePreview();
+                    }
                     break;
                     
                 case 'template_update':
                     const templateEl = document.getElementById('template');
-                    templateEl.textContent = data.template;
+                    currentTemplate = data.template;
+                    templateEl.textContent = currentTemplate;
                     templateEl.classList.add('updating');
                     setTimeout(() => templateEl.classList.remove('updating'), 500);
+                    
+                    // Update preview if needed
+                    if (userSettings.markdownView === 'preview' || userSettings.markdownView === 'split') {
+                        updatePreview();
+                    }
                     break;
                     
                 case 'new_message':
@@ -568,14 +1435,18 @@
             }
         }
         
-        // ユーザーリスト更新
+        // ========================================
+        // User List Update
+        // ========================================
         function updateUserList(users) {
             document.getElementById('user-count').textContent = users.length;
             const names = users.map(u => escapeHtml(u.name)).join(', ');
             document.getElementById('user-list').textContent = users.length > 0 ? ` (${names})` : '';
         }
         
-        // メッセージ表示
+        // ========================================
+        // Message Display
+        // ========================================
         function addMessage(msg) {
             const div = document.createElement('div');
             div.className = `message ${msg.type}`;
@@ -597,16 +1468,20 @@
             
             const container = document.getElementById('messages');
             container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
+            
+            if (userSettings.autoScroll) {
+                container.scrollTop = container.scrollHeight;
+            }
         }
         
-        // 名前変更
+        // ========================================
+        // Name Change
+        // ========================================
         function changeName() {
             const newName = prompt('新しい名前を入力:', userName);
             if (newName && newName.trim() && ws && ws.readyState === WebSocket.OPEN) {
                 const trimmedName = newName.trim();
                 
-                // クライアント側でも基本的なバリデーション
                 if (trimmedName.length > 20) {
                     showError('名前は20文字以内にしてください');
                     return;
@@ -624,7 +1499,9 @@
             }
         }
         
-        // 送信処理
+        // ========================================
+        // Send Message
+        // ========================================
         function send() {
             const input = document.getElementById('input');
             const text = input.value.trim();
@@ -640,7 +1517,7 @@
             }
         }
         
-        // Enterキー処理
+        // Enter key
         document.getElementById('input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -648,14 +1525,24 @@
             }
         });
         
-        // ページ離脱時の処理
+        // ========================================
+        // Page Unload
+        // ========================================
         window.addEventListener('beforeunload', () => {
             if (ws) {
                 ws.close();
             }
         });
         
-        // 初期接続
+        // ========================================
+        // Initialize
+        // ========================================
+        document.getElementById('room-name').textContent = `ルーム: ${roomName}`;
+        
+        // Load settings first
+        loadSettings();
+        
+        // Then connect
         connect();
     </script>
 </body>
