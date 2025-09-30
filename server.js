@@ -473,9 +473,15 @@ async function handleMessage(ws, roomId, data) {
             return;
         }
         
-        // @AI コマンド: AI処理
-        if (text.startsWith('@AI ') || text.startsWith('@ai ')) {
-            const instruction = text.substring(4);
+        // @AI コマンド: AI処理（★全角スペース対応版★）
+        // 正規表現: @ai の後に半角または全角スペースが1つ以上、その後に指示内容
+        // i フラグで大文字小文字を区別しない
+        const aiCommandPattern = /^@ai[\s　]+(.+)$/i;
+        const aiMatch = text.match(aiCommandPattern);
+        
+        if (aiMatch) {
+            // キャプチャグループから指示内容を取得
+            const instruction = aiMatch[1].trim();
             
             try {
                 // ✅ セキュリティ: AI指示のサニタイゼーション
@@ -599,7 +605,7 @@ function addMessage(roomId, text, type = 'user', userData = null) {
     });
 }
 
-// Ollama呼び出し
+// Ollama呼び出し（★プレースホルダー保持版★）
 async function callOllama(currentTemplate, instruction) {
     try {
         const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
@@ -607,20 +613,28 @@ async function callOllama(currentTemplate, instruction) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: CURRENT_MODEL,
-                prompt: `
-Markdownテンプレートを編集してください。
-{{変数}}の部分を実際の値に置き換えてください。
+                prompt: `あなたはMarkdownテンプレートの編集アシスタントです。
 
-現在のテンプレート:
+【重要なルール】
+1. 指示された箇所「のみ」を変更してください
+2. {{変数}}の形式は絶対に保持してください（例: {{date}}, {{school}}など）
+3. 指示されていない{{変数}}は絶対に置き換えないでください
+4. 不要な創作や追加は一切行わないでください
+5. テンプレートの構造とフォーマットを維持してください
+
+【現在のテンプレート】
 ${currentTemplate}
 
-指示: ${instruction}
+【ユーザーの指示】
+${instruction}
 
-編集後の完全なテンプレート:`,
+【編集後の完全なテンプレート】
+上記のルールに従って、指示された箇所のみを変更したテンプレートを出力してください。
+変更していない部分は元のまま保持してください。`,
                 stream: false,
                 options: {
-                    temperature: 0.3,
-                    num_predict: 500
+                    temperature: 0.1,
+                    num_predict: 800
                 }
             })
         });
