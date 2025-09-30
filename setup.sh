@@ -2,6 +2,7 @@
 
 echo "======================================="
 echo "Markdown Editor セットアップスクリプト"
+echo "v6.3 (Better-SQLite3対応版)"
 echo "======================================="
 
 # .envファイルから設定を読み込み
@@ -57,15 +58,26 @@ else
     echo "✅ ${OLLAMA_MODEL}: インストール済み"
 fi
 
+# データディレクトリの作成
+echo ""
+echo "💾 データベースディレクトリを作成中..."
+mkdir -p data
+
 echo ""
 echo "======================================="
 echo "✅ セットアップ完了！"
 echo "======================================="
 echo "使用モデル: ${OLLAMA_MODEL}"
+echo "データベース: ./data/rooms.db"
 echo ""
 echo "サーバーを起動するには:"
 echo "  npm start"
 echo ""
 echo "ブラウザでアクセス:"
 echo "  http://localhost:3000/?room=test&name=あなたの名前"
+echo ""
+echo "💡 新機能: データ永続化"
+echo "  - テンプレート編集内容が保存されます"
+echo "  - チャットメッセージ履歴が保存されます"
+echo "  - サーバー再起動後もデータが残ります"
 echo ""

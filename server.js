@@ -3,6 +3,15 @@ import { WebSocketServer } from 'ws';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import {
+    getOrCreateRoom,
+    updateRoomTemplate,
+    saveMessage,
+    getRecentMessages,
+    logUserAction,
+    getDatabaseStats,
+    deleteOldMessages
+} from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -23,7 +32,7 @@ async function checkOllama() {
         
         // モデル確認
         const data = await response.json();
-        const modelName = OLLAMA_MODEL.split(':')[0]; // モデル名のベース部分を取得
+        const modelName = OLLAMA_MODEL.split(':')[0];
         const hasModel = data.models?.some(m => m.name.includes(modelName));
         if (!hasModel) {
             console.warn(`⚠️  ${OLLAMA_MODEL} が見つかりません。実行: ollama pull ${OLLAMA_MODEL}`);
@@ -41,7 +50,7 @@ async function checkOllama() {
 // 起動時チェック
 checkOllama();
 
-// CORS設定（必要な場合）
+// CORS設定
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST');
@@ -49,40 +58,26 @@ app.use((req, res, next) => {
     next();
 });
 
-// ルームごとのデータ管理
+// ルームごとのデータ管理（メモリ内）
 const rooms = new Map();
 
-// ユーザーID生成（簡易版）
+// ユーザーID生成
 let userCounter = 0;
 function generateUserId() {
     return `user-${Date.now()}-${++userCounter}`;
 }
 
-// ルームデータの取得または作成
-function getRoom(roomId) {
-    if (!rooms.has(roomId)) {
-        rooms.set(roomId, {
-            template: '',
-            clients: new Map(), // Map<ws, userData>
-            messages: [],
-            createdAt: new Date()
-        });
-        loadTemplate(roomId);
-    }
-    return rooms.get(roomId);
-}
-
-// テンプレート読み込み
-async function loadTemplate(roomId) {
-    const room = rooms.get(roomId);
+// デフォルトテンプレートを読み込み
+let defaultTemplate = '';
+async function loadDefaultTemplate() {
     const templatePath = join(__dirname, 'templates', 'default.md');
     
     try {
-        room.template = await fs.readFile(templatePath, 'utf-8');
-        console.log(`📄 テンプレート読み込み: ${roomId}`);
+        defaultTemplate = await fs.readFile(templatePath, 'utf-8');
+        console.log(`📄 デフォルトテンプレート読み込み成功`);
     } catch (error) {
         console.warn('⚠️  default.mdが見つかりません。デフォルトテンプレートを使用');
-        room.template = `# テンプレート
+        defaultTemplate = `# テンプレート
 
 **訪問日時**: {{date}}
 **学校名**: {{school}}
@@ -100,16 +95,41 @@ async function loadTemplate(roomId) {
     }
 }
 
+// ルームデータの取得または作成
+function getRoom(roomId) {
+    if (!rooms.has(roomId)) {
+        // データベースからルーム情報を取得
+        const dbRoom = getOrCreateRoom(roomId, defaultTemplate);
+        
+        rooms.set(roomId, {
+            template: dbRoom.template,
+            clients: new Map(),
+            createdAt: new Date(dbRoom.created_at)
+        });
+        
+        console.log(`📂 ルーム読み込み: ${roomId}`);
+    }
+    return rooms.get(roomId);
+}
+
 // 静的ファイル配信
 app.use(express.static(join(__dirname, 'public')));
 
 // ヘルスチェック
 app.get('/health', (req, res) => {
+    const stats = getDatabaseStats();
     res.json({ 
         status: 'ok', 
-        rooms: rooms.size,
-        clients: Array.from(rooms.values()).reduce((sum, room) => sum + room.clients.size, 0)
+        activeRooms: rooms.size,
+        activeClients: Array.from(rooms.values()).reduce((sum, room) => sum + room.clients.size, 0),
+        database: stats
     });
+});
+
+// データベース統計API
+app.get('/api/stats', (req, res) => {
+    const stats = getDatabaseStats();
+    res.json(stats);
 });
 
 // WebSocket接続
@@ -134,13 +154,31 @@ wss.on('connection', (ws, req) => {
     
     console.log(`👤 ${userData.name} が ${roomId} に参加`);
     
+    // データベースにログ記録
+    logUserAction(roomId, userId, userData.name, 'joined');
+    
+    // データベースからメッセージ履歴を取得
+    const dbMessages = getRecentMessages(roomId, 50);
+    
+    // メッセージをフロントエンド形式に変換
+    const messages = dbMessages.map(msg => ({
+        text: msg.text,
+        type: msg.type,
+        time: new Date(msg.created_at).toLocaleTimeString('ja-JP', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        }),
+        userName: msg.user_name,
+        userId: msg.user_id
+    }));
+    
     // 初期データ送信
     ws.send(JSON.stringify({
         type: 'init',
         userId: userId,
         userName: userData.name,
         template: room.template,
-        messages: room.messages.slice(-20),
+        messages: messages,
         users: getUserList(roomId)
     }));
     
@@ -178,6 +216,10 @@ wss.on('connection', (ws, req) => {
         // 退出通知
         if (userData) {
             console.log(`👤 ${userData.name} が ${roomId} から退出`);
+            
+            // データベースにログ記録
+            logUserAction(roomId, userId, userData.name, 'left');
+            
             addMessage(roomId, `${userData.name} が退出しました`, 'system');
             broadcastToRoom(roomId, {
                 type: 'user_left',
@@ -186,12 +228,12 @@ wss.on('connection', (ws, req) => {
             });
         }
         
-        // 空ルームの削除
+        // 空ルームの削除（メモリから）
         if (room.clients.size === 0) {
             setTimeout(() => {
                 if (rooms.has(roomId) && rooms.get(roomId).clients.size === 0) {
                     rooms.delete(roomId);
-                    console.log(`🗑️  空ルーム削除: ${roomId}`);
+                    console.log(`🗑️  メモリから空ルーム削除: ${roomId}`);
                 }
             }, 60000); // 1分後
         }
@@ -224,6 +266,9 @@ async function handleMessage(ws, roomId, data) {
                 const oldName = userData.name;
                 userData.name = newName;
                 
+                // データベースにログ記録
+                logUserAction(roomId, userData.id, newName, 'renamed');
+                
                 // 名前変更通知
                 broadcastToRoom(roomId, {
                     type: 'user_renamed',
@@ -250,6 +295,10 @@ async function handleMessage(ws, roomId, data) {
             
             if (result) {
                 room.template = result;
+                
+                // データベースに保存
+                updateRoomTemplate(roomId, result);
+                
                 broadcastToRoom(roomId, {
                     type: 'template_update',
                     template: room.template,
@@ -271,10 +320,12 @@ async function handleMessage(ws, roomId, data) {
 // メッセージ追加と配信
 function addMessage(roomId, text, type = 'user', userData = null) {
     const room = getRoom(roomId);
+    const now = new Date();
+    
     const message = {
         text,
         type,
-        time: new Date().toLocaleTimeString('ja-JP', { 
+        time: now.toLocaleTimeString('ja-JP', { 
             hour: '2-digit', 
             minute: '2-digit' 
         }),
@@ -282,10 +333,14 @@ function addMessage(roomId, text, type = 'user', userData = null) {
         userId: userData ? userData.id : null
     };
     
-    room.messages.push(message);
-    if (room.messages.length > 50) {
-        room.messages.shift();
-    }
+    // データベースに保存
+    saveMessage(
+        roomId,
+        userData ? userData.id : null,
+        userData ? userData.name : 'システム',
+        text,
+        type
+    );
     
     broadcastToRoom(roomId, {
         type: 'new_message',
@@ -345,15 +400,31 @@ function broadcastToRoom(roomId, data, excludeWs = null) {
     });
 }
 
+// 定期的なメンテナンス（オプション）
+setInterval(() => {
+    // 30日以上古いメッセージを削除
+    deleteOldMessages(30);
+}, 24 * 60 * 60 * 1000); // 1日ごと
+
 // サーバー起動
-app.listen(PORT, () => {
-    console.log('=====================================');
-    console.log('🚀 Markdown Editor Server Started');
-    console.log(`📍 HTTP Server: http://localhost:${PORT}`);
-    console.log(`📍 WebSocket: ws://localhost:${WS_PORT}`);
-    console.log(`🤖 Ollama Model: ${OLLAMA_MODEL}`);
-    console.log('=====================================');
-    console.log('使い方:');
-    console.log(`  http://localhost:${PORT}/?room=ルーム名&name=あなたの名前`);
-    console.log('=====================================');
-});
+async function startServer() {
+    // デフォルトテンプレートを読み込み
+    await loadDefaultTemplate();
+    
+    app.listen(PORT, () => {
+        const stats = getDatabaseStats();
+        console.log('=====================================');
+        console.log('🚀 Markdown Editor Server Started');
+        console.log(`📍 HTTP Server: http://localhost:${PORT}`);
+        console.log(`📍 WebSocket: ws://localhost:${WS_PORT}`);
+        console.log(`🤖 Ollama Model: ${OLLAMA_MODEL}`);
+        console.log(`💾 Database: ${stats.dbPath}`);
+        console.log(`📊 DB Stats: ${stats.rooms} rooms, ${stats.messages} messages`);
+        console.log('=====================================');
+        console.log('使い方:');
+        console.log(`  http://localhost:${PORT}/?room=ルーム名&name=あなたの名前`);
+        console.log('=====================================');
+    });
+}
+
+startServer();
