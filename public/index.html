@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown Collaborative Editor v6.7</title>
+    <title>Markdown Collaborative Editor v6.8</title>
     <!-- Marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
@@ -139,6 +139,65 @@
         #connection-status.disconnected {
             background: var(--accent-error);
             animation: none;
+        }
+        
+        /* Room Selector Styles */
+        .room-selector-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .room-selector-container label {
+            font-size: 14px;
+            color: var(--text-header);
+            font-weight: 600;
+        }
+        
+        #room-select {
+            padding: 5px 10px;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
+            font-size: 14px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            cursor: pointer;
+            min-width: 120px;
+            max-width: 200px;
+            transition: background 0.2s;
+        }
+        
+        #room-select:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        #room-select option {
+            background: #2c3e50;
+            color: white;
+            padding: 5px;
+        }
+        
+        [data-theme="dark"] #room-select option {
+            background: #1e1e1e;
+        }
+        
+        #room-select option.current-room {
+            font-weight: 600;
+        }
+        
+        #room-select option.separator {
+            border-top: 1px solid rgba(255,255,255,0.3);
+            padding: 0;
+            height: 1px;
+        }
+        
+        #room-select option.new-room {
+            font-weight: 600;
+            color: #4ec9b0;
+        }
+        
+        [data-theme="dark"] #room-select option.new-room {
+            color: #4ec9b0;
         }
         
         #my-name {
@@ -829,6 +888,11 @@
                 border-right: none;
                 border-bottom: 1px solid var(--border-color);
             }
+            
+            #room-select {
+                min-width: 100px;
+                max-width: 150px;
+            }
         }
         
         /* ========================================
@@ -865,7 +929,12 @@
                 </button>
                 <div id="room-info">
                     <div id="connection-status" title="接続状態"></div>
-                    <div id="room-name">ルーム: default</div>
+                    <div class="room-selector-container">
+                        <label for="room-select">ルーム:</label>
+                        <select id="room-select" title="ルームを選択">
+                            <option value="">読み込み中...</option>
+                        </select>
+                    </div>
                     <div id="my-name" onclick="changeName()" title="クリックして名前を変更">名前: ユーザー</div>
                 </div>
             </div>
@@ -1107,6 +1176,189 @@
         let currentTemplate = '';
         
         // ========================================
+        // Room History Manager (v6.8 New Feature)
+        // ========================================
+        class RoomHistoryManager {
+            constructor() {
+                this.storageKey = 'markdown-editor-room-history';
+                this.maxHistory = 20;
+            }
+            
+            getHistory() {
+                const stored = localStorage.getItem(this.storageKey);
+                if (!stored) return [];
+                
+                try {
+                    const data = JSON.parse(stored);
+                    return data.roomHistory || [];
+                } catch (e) {
+                    console.error('Failed to load room history:', e);
+                    return [];
+                }
+            }
+            
+            addRoom(roomId) {
+                let history = this.getHistory();
+                
+                // 既存のエントリを探す
+                const existingIndex = history.findIndex(h => h.roomId === roomId);
+                
+                if (existingIndex !== -1) {
+                    // 既存エントリを更新
+                    const existing = history[existingIndex];
+                    existing.lastVisit = new Date().toISOString();
+                    existing.visitCount++;
+                    
+                    // 最新に移動
+                    history.splice(existingIndex, 1);
+                    history.unshift(existing);
+                } else {
+                    // 新規エントリを追加
+                    history.unshift({
+                        roomId: roomId,
+                        displayName: roomId,
+                        lastVisit: new Date().toISOString(),
+                        visitCount: 1
+                    });
+                }
+                
+                // 最大件数に制限
+                if (history.length > this.maxHistory) {
+                    history = history.slice(0, this.maxHistory);
+                }
+                
+                // 保存
+                this.saveHistory(history);
+            }
+            
+            saveHistory(history) {
+                try {
+                    localStorage.setItem(this.storageKey, JSON.stringify({
+                        version: '1.0',
+                        roomHistory: history
+                    }));
+                } catch (e) {
+                    console.error('Failed to save room history:', e);
+                }
+            }
+            
+            removeRoom(roomId) {
+                let history = this.getHistory();
+                history = history.filter(h => h.roomId !== roomId);
+                this.saveHistory(history);
+            }
+            
+            clearHistory() {
+                localStorage.removeItem(this.storageKey);
+            }
+        }
+        
+        const roomHistory = new RoomHistoryManager();
+        
+        // ========================================
+        // Room Selector Functions (v6.8 New Feature)
+        // ========================================
+        function updateRoomSelector() {
+            const select = document.getElementById('room-select');
+            const currentRoom = roomName;
+            const history = roomHistory.getHistory();
+            
+            // セレクトをクリア
+            select.innerHTML = '';
+            
+            // 現在のルームを追加（常に最初）
+            const currentOption = document.createElement('option');
+            currentOption.value = currentRoom;
+            currentOption.textContent = `${currentRoom} (現在)`;
+            currentOption.className = 'current-room';
+            currentOption.selected = true;
+            select.appendChild(currentOption);
+            
+            // 履歴のルームを追加（現在のルーム以外）
+            const otherRooms = history.filter(h => h.roomId !== currentRoom);
+            
+            if (otherRooms.length > 0) {
+                otherRooms.forEach(room => {
+                    const option = document.createElement('option');
+                    option.value = room.roomId;
+                    option.textContent = room.displayName;
+                    select.appendChild(option);
+                });
+            }
+            
+            // 区切り線
+            const separator = document.createElement('option');
+            separator.disabled = true;
+            separator.textContent = '──────────────';
+            separator.className = 'separator';
+            select.appendChild(separator);
+            
+            // 新しいルームを作成
+            const newRoomOption = document.createElement('option');
+            newRoomOption.value = '__new__';
+            newRoomOption.textContent = '＋ 新しいルームを作成...';
+            newRoomOption.className = 'new-room';
+            select.appendChild(newRoomOption);
+        }
+        
+        function navigateToRoom(newRoomId) {
+            // 現在のURLパラメータを取得
+            const params = new URLSearchParams(location.search);
+            
+            // ルーム名を変更
+            params.set('room', newRoomId);
+            
+            // 名前は保持
+            if (userName) {
+                params.set('name', userName);
+            }
+            
+            // テンプレートは保持しない（各ルームが独自のテンプレートを持つ）
+            params.delete('template');
+            
+            // ページ遷移
+            location.href = `${location.pathname}?${params.toString()}`;
+        }
+        
+        // Room selector event listener
+        document.getElementById('room-select').addEventListener('change', (e) => {
+            const selectedRoom = e.target.value;
+            
+            if (selectedRoom === '__new__') {
+                // 新しいルームを作成
+                const newRoom = prompt('新しいルーム名を入力してください:\n\n※英数字、ハイフン、アンダースコアのみ使用できます（1-50文字）');
+                
+                if (newRoom && newRoom.trim()) {
+                    const trimmedRoom = newRoom.trim();
+                    
+                    // バリデーション（英数字、ハイフン、アンダースコア）
+                    if (!/^[a-zA-Z0-9_-]+$/.test(trimmedRoom)) {
+                        alert('❌ ルーム名は英数字、ハイフン、アンダースコアのみ使用できます');
+                        e.target.value = roomName; // 元に戻す
+                        return;
+                    }
+                    
+                    if (trimmedRoom.length < 1 || trimmedRoom.length > 50) {
+                        alert('❌ ルーム名は1-50文字で入力してください');
+                        e.target.value = roomName; // 元に戻す
+                        return;
+                    }
+                    
+                    // 新しいルームに遷移
+                    console.log(`🚪 新しいルームに移動: ${trimmedRoom}`);
+                    navigateToRoom(trimmedRoom);
+                } else {
+                    // キャンセルされた場合、元に戻す
+                    e.target.value = roomName;
+                }
+            } else if (selectedRoom !== roomName && selectedRoom !== '') {
+                // 別のルームに遷移
+                console.log(`🚪 ルームに移動: ${selectedRoom}`);
+                navigateToRoom(selectedRoom);
+            }
+        });
+        
+        // ========================================
         // Settings Management
         // ========================================
         const DEFAULT_SETTINGS = {
@@ -1117,8 +1369,8 @@
             markdownView: 'edit',
             autoScroll: true,
             // AI Settings
-            aiTemperature: 0.3,  // Changed default from 0.1 to 0.3
-            aiPreset: 'balance'   // Default preset
+            aiTemperature: 0.3,
+            aiPreset: 'balance'
         };
         
         let userSettings = { ...DEFAULT_SETTINGS };
@@ -1170,7 +1422,7 @@
             // AI Temperature settings
             const tempValue = userSettings.aiTemperature;
             const tempRange = document.getElementById('temperature-range');
-            tempRange.value = tempValue * 10; // Convert to 0-20 range
+            tempRange.value = tempValue * 10;
             document.getElementById('temperature-value').textContent = tempValue.toFixed(1);
             
             // Set preset radio button
@@ -1256,7 +1508,7 @@
         
         // Temperature slider
         document.getElementById('temperature-range').addEventListener('input', (e) => {
-            const value = parseInt(e.target.value) / 10; // Convert from 0-20 to 0.0-2.0
+            const value = parseInt(e.target.value) / 10;
             userSettings.aiTemperature = value;
             userSettings.aiPreset = 'custom';
             document.getElementById('temperature-value').textContent = value.toFixed(1);
@@ -1490,7 +1742,7 @@
             }
         });
         
-        // ★モデル変更イベントリスナー（新規追加）
+        // Model change
         document.getElementById('model-select').addEventListener('change', (e) => {
             const modelName = e.target.value;
             if (!modelName) return;
@@ -1531,6 +1783,12 @@
                     console.log('WebSocket接続成功');
                     document.getElementById('connection-status').classList.remove('disconnected');
                     hideError();
+                    
+                    // ★ルーム履歴に追加 (v6.8 New Feature)
+                    roomHistory.addRoom(roomName);
+                    
+                    // ★ルームセレクターを更新 (v6.8 New Feature)
+                    updateRoomSelector();
                     
                     loadModels();
                     loadTemplates();
@@ -1598,7 +1856,6 @@
                     document.getElementById('messages').innerHTML = '';
                     data.messages.forEach(msg => addMessage(msg));
                     
-                    // ★モデル情報の反映（追加）
                     if (data.model) {
                         document.getElementById('model-select').value = data.model;
                     }
@@ -1637,12 +1894,9 @@
                     }
                     break;
                     
-                // ★モデル変更通知の処理（新規追加）
                 case 'model_changed':
                     const modelSelect = document.getElementById('model-select');
                     modelSelect.value = data.model;
-                    // システムメッセージは 'new_message' で別途受信されるため
-                    // ここではドロップダウンの更新のみ
                     break;
                     
                 case 'error':
@@ -1764,7 +2018,9 @@
         // ========================================
         // Initialize
         // ========================================
-        document.getElementById('room-name').textContent = `ルーム: ${roomName}`;
+        console.log('🚀 Markdown Editor v6.8 起動中...');
+        console.log('📂 ルーム:', roomName);
+        console.log('👤 ユーザー名:', userName || '未設定');
         
         // Load settings first
         loadSettings();
