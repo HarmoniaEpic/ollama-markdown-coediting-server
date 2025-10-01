@@ -175,6 +175,25 @@ function getRoom(roomId, templateFile = 'default.md') {
     return rooms.get(roomId);
 }
 
+// Temperature値のバリデーション
+function validateTemperature(temp) {
+    if (temp === undefined || temp === null) {
+        return 0.3; // デフォルト値を0.3に変更
+    }
+    
+    const num = parseFloat(temp);
+    if (isNaN(num)) {
+        return 0.3; // デフォルト値
+    }
+    
+    // 範囲を0.0〜2.0に制限
+    if (num < 0) return 0;
+    if (num > 2) return 2;
+    
+    // 小数点第1位までに丸める
+    return Math.round(num * 10) / 10;
+}
+
 // 静的ファイル配信
 app.use(express.static(join(__dirname, 'public')));
 
@@ -186,7 +205,8 @@ app.get('/health', (req, res) => {
         activeRooms: rooms.size,
         activeClients: Array.from(rooms.values()).reduce((sum, room) => sum + room.clients.size, 0),
         database: stats,
-        model: CURRENT_MODEL
+        model: CURRENT_MODEL,
+        defaultTemperature: 0.3  // デフォルトtemperature値を追加
     });
 });
 
@@ -483,14 +503,21 @@ async function handleMessage(ws, roomId, data) {
             // キャプチャグループから指示内容を取得
             const instruction = aiMatch[1].trim();
             
+            // Temperature値を取得（settingsから、なければデフォルト値）
+            let temperature = 0.3; // デフォルト値を0.3に変更
+            if (data.settings && data.settings.temperature !== undefined) {
+                temperature = validateTemperature(data.settings.temperature);
+            }
+            
             try {
                 // ✅ セキュリティ: AI指示のサニタイゼーション
                 const sanitizedInstruction = sanitizeAIInstruction(instruction);
                 
-                // AI処理中メッセージ
-                addMessage(roomId, `AI処理中: "${sanitizedInstruction}"`, 'system');
+                // AI処理中メッセージ（temperature値も表示）
+                addMessage(roomId, `AI処理中: "${sanitizedInstruction}" (Temperature: ${temperature})`, 'system');
                 
-                const result = await callOllama(room.template, sanitizedInstruction);
+                // Temperature値を渡してOllamaを呼び出し
+                const result = await callOllama(room.template, sanitizedInstruction, temperature);
                 
                 if (result) {
                     room.template = result;
@@ -505,7 +532,7 @@ async function handleMessage(ws, roomId, data) {
                     });
                     
                     addMessage(roomId, `✅ ${userData.name}がAI編集を実行: "${sanitizedInstruction}"`, 'system');
-                    console.log(`🤖 AI編集実行: ${sanitizedInstruction}`);
+                    console.log(`🤖 AI編集実行: ${sanitizedInstruction} (Temperature: ${temperature})`);
                 } else {
                     addMessage(roomId, `❌ AI処理に失敗しました`, 'system');
                 }
@@ -605,9 +632,14 @@ function addMessage(roomId, text, type = 'user', userData = null) {
     });
 }
 
-// Ollama呼び出し（★プレースホルダー保持版★）
-async function callOllama(currentTemplate, instruction) {
+// Ollama呼び出し（★Temperature対応版★）
+async function callOllama(currentTemplate, instruction, temperature = 0.3) {
     try {
+        // Temperature値を再度バリデーション（安全のため）
+        const validatedTemp = validateTemperature(temperature);
+        
+        console.log(`🤖 Ollama呼び出し - Model: ${CURRENT_MODEL}, Temperature: ${validatedTemp}`);
+        
         const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -633,7 +665,7 @@ ${instruction}
 変更していない部分は元のまま保持してください。`,
                 stream: false,
                 options: {
-                    temperature: 0.1,
+                    temperature: validatedTemp,  // 動的なtemperature値を使用
                     num_predict: 800
                 }
             })
@@ -679,10 +711,11 @@ async function startServer() {
     app.listen(PORT, () => {
         const stats = getDatabaseStats();
         console.log('=====================================');
-        console.log('🚀 Markdown Editor Server Started');
+        console.log('🚀 Markdown Editor Server Started v6.6');
         console.log('📍 HTTP Server: http://localhost:' + PORT);
         console.log('📍 WebSocket: ws://localhost:' + WS_PORT);
         console.log('🤖 Current Model: ' + CURRENT_MODEL);
+        console.log('🌡️  Default Temperature: 0.3');
         console.log('💾 Database: ' + stats.dbPath);
         console.log('📊 DB Stats: ' + stats.rooms + ' rooms, ' + stats.messages + ' messages');
         console.log('🛡️  Security: Enhanced');
@@ -690,6 +723,11 @@ async function startServer() {
         console.log('使い方:');
         console.log('  http://localhost:' + PORT + '/?room=ルーム名&name=あなたの名前');
         console.log('  テンプレート指定: &template=custom.md');
+        console.log('=====================================');
+        console.log('✨ v6.6 新機能:');
+        console.log('  - ハンバーガーメニューが左端に移動');
+        console.log('  - AI Temperature設定が可能（0.0-2.0）');
+        console.log('  - デフォルトTemperature値: 0.3');
         console.log('=====================================');
     });
 }
