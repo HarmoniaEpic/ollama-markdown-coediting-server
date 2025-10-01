@@ -1,6 +1,6 @@
 # 🚧工事中／Under Construction🚧
 
-# Markdown協調編集システム v6.6
+# Markdown協調編集システム v6.7
 
 リアルタイムMarkdown協調編集システムです。複数ユーザーで同時編集、AIによる自動編集（**Temperature設定対応**）、統合チャット機能、データ永続化、セキュリティ強化、高度なUI設定機能を提供します。
 
