@@ -724,11 +724,6 @@ async function startServer() {
         console.log('  http://localhost:' + PORT + '/?room=ルーム名&name=あなたの名前');
         console.log('  テンプレート指定: &template=custom.md');
         console.log('=====================================');
-        console.log('✨ v6.6 新機能:');
-        console.log('  - ハンバーガーメニューが左端に移動');
-        console.log('  - AI Temperature設定が可能（0.0-2.0）');
-        console.log('  - デフォルトTemperature値: 0.3');
-        console.log('=====================================');
     });
 }
 
