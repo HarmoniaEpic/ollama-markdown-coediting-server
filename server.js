@@ -167,7 +167,8 @@ function getRoom(roomId, templateFile = 'default.md') {
             template: dbRoom.template,
             clients: new Map(),
             createdAt: new Date(dbRoom.created_at),
-            templateFile: templateFile
+            templateFile: templateFile,
+            model: 'gemma3:latest'  // ★追加：デフォルトモデル
         });
         
         console.log(`📂 ルーム読み込み: ${roomId}`);
@@ -381,7 +382,8 @@ wss.on('connection', (ws, req) => {
         userName: userData.name,
         template: room.template,
         messages: messages,
-        users: getUserList(roomId)
+        users: getUserList(roomId),
+        model: room.model  // ★追加：モデル情報
     }));
     
     // 参加通知
@@ -516,8 +518,8 @@ async function handleMessage(ws, roomId, data) {
                 // AI処理中メッセージ（temperature値も表示）
                 addMessage(roomId, `AI処理中: "${sanitizedInstruction}" (Temperature: ${temperature})`, 'system');
                 
-                // Temperature値を渡してOllamaを呼び出し
-                const result = await callOllama(room.template, sanitizedInstruction, temperature);
+                // Temperature値とモデルを渡してOllamaを呼び出し
+                const result = await callOllama(room.template, sanitizedInstruction, temperature, room.model);
                 
                 if (result) {
                     room.template = result;
@@ -532,7 +534,7 @@ async function handleMessage(ws, roomId, data) {
                     });
                     
                     addMessage(roomId, `✅ ${userData.name}がAI編集を実行: "${sanitizedInstruction}"`, 'system');
-                    console.log(`🤖 AI編集実行: ${sanitizedInstruction} (Temperature: ${temperature})`);
+                    console.log(`🤖 AI編集実行: ${sanitizedInstruction} (Temperature: ${temperature}, Model: ${room.model})`);
                 } else {
                     addMessage(roomId, `❌ AI処理に失敗しました`, 'system');
                 }
@@ -599,6 +601,65 @@ async function handleMessage(ws, roomId, data) {
             }));
         }
     }
+    
+    // ★モデル変更リクエスト
+    if (data.type === 'change_model') {
+        const modelName = sanitizeUrlParam(data.model);
+        
+        // バリデーション
+        if (!validateModelName(modelName)) {
+            ws.send(JSON.stringify({
+                type: 'error',
+                message: '無効なモデル名です'
+            }));
+            securityLog('warn', 'Invalid model name attempt', { 
+                modelName, 
+                userId: userData.id 
+            });
+            return;
+        }
+        
+        // モデルが実際に存在するか確認
+        try {
+            const response = await fetch(`${OLLAMA_HOST}/api/tags`);
+            if (!response.ok) {
+                throw new Error('Ollama not responding');
+            }
+            
+            const ollamaData = await response.json();
+            const availableModels = ollamaData.models.map(m => m.name);
+            
+            if (!availableModels.includes(modelName)) {
+                ws.send(JSON.stringify({
+                    type: 'error',
+                    message: `モデル ${modelName} がインストールされていません`
+                }));
+                return;
+            }
+            
+            // モデル変更
+            room.model = modelName;
+            
+            // 全クライアントに通知
+            broadcastToRoom(roomId, {
+                type: 'model_changed',
+                model: modelName,
+                changedBy: userData.name
+            });
+            
+            // システムメッセージ
+            addMessage(roomId, `🤖 ${userData.name}がAIモデルを変更: ${modelName}`, 'system');
+            
+            console.log(`🤖 モデル変更: ${roomId} → ${modelName} (by ${userData.name})`);
+            
+        } catch (error) {
+            console.error('モデル変更エラー:', error);
+            ws.send(JSON.stringify({
+                type: 'error',
+                message: 'モデルの変更に失敗しました'
+            }));
+        }
+    }
 }
 
 // メッセージ追加と配信
@@ -632,19 +693,19 @@ function addMessage(roomId, text, type = 'user', userData = null) {
     });
 }
 
-// Ollama呼び出し（★Temperature対応版★）
-async function callOllama(currentTemplate, instruction, temperature = 0.3) {
+// Ollama呼び出し（★Temperature対応版 + モデル対応版★）
+async function callOllama(currentTemplate, instruction, temperature = 0.3, model = 'gemma3:latest') {
     try {
         // Temperature値を再度バリデーション（安全のため）
         const validatedTemp = validateTemperature(temperature);
         
-        console.log(`🤖 Ollama呼び出し - Model: ${CURRENT_MODEL}, Temperature: ${validatedTemp}`);
+        console.log(`🤖 Ollama呼び出し - Model: ${model}, Temperature: ${validatedTemp}`);
         
         const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: CURRENT_MODEL,
+                model: model,
                 prompt: `あなたはMarkdownテンプレートの編集アシスタントです。
 
 【重要なルール】
@@ -665,7 +726,7 @@ ${instruction}
 変更していない部分は元のまま保持してください。`,
                 stream: false,
                 options: {
-                    temperature: validatedTemp,  // 動的なtemperature値を使用
+                    temperature: validatedTemp,
                     num_predict: 800
                 }
             })
@@ -711,7 +772,7 @@ async function startServer() {
     app.listen(PORT, () => {
         const stats = getDatabaseStats();
         console.log('=====================================');
-        console.log('🚀 Markdown Editor Server Started v6.6');
+        console.log('🚀 Markdown Editor Server Started v6.7');
         console.log('📍 HTTP Server: http://localhost:' + PORT);
         console.log('📍 WebSocket: ws://localhost:' + WS_PORT);
         console.log('🤖 Current Model: ' + CURRENT_MODEL);
