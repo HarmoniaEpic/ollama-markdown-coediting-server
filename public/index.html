@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown Collaborative Editor v6.6</title>
+    <title>Markdown Collaborative Editor v6.7</title>
     <!-- Marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
@@ -183,11 +183,6 @@
             color: white;
             cursor: pointer;
             max-width: 200px;
-        }
-        
-        #model-select:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
         }
         
         #model-select option, #template-select option {
@@ -880,7 +875,7 @@
                 <div id="controls">
                     <div class="control-group">
                         <label>🤖 モデル:</label>
-                        <select id="model-select" disabled title="使用中のAIモデル">
+                        <select id="model-select" title="AIモデルを選択">
                             <option value="">読み込み中...</option>
                         </select>
                     </div>
@@ -1495,6 +1490,27 @@
             }
         });
         
+        // ★モデル変更イベントリスナー（新規追加）
+        document.getElementById('model-select').addEventListener('change', (e) => {
+            const modelName = e.target.value;
+            if (!modelName) return;
+            
+            try {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'change_model',
+                        model: modelName
+                    }));
+                    console.log('モデル変更リクエスト:', modelName);
+                } else {
+                    showError('サーバーに接続されていません');
+                }
+            } catch (error) {
+                console.error('モデル変更エラー:', error);
+                showError('モデルの変更に失敗しました');
+            }
+        });
+        
         // Reload templates
         document.getElementById('reload-templates').addEventListener('click', () => {
             loadTemplates();
@@ -1582,6 +1598,11 @@
                     document.getElementById('messages').innerHTML = '';
                     data.messages.forEach(msg => addMessage(msg));
                     
+                    // ★モデル情報の反映（追加）
+                    if (data.model) {
+                        document.getElementById('model-select').value = data.model;
+                    }
+                    
                     // Update preview if needed
                     if (userSettings.markdownView === 'preview' || userSettings.markdownView === 'split') {
                         updatePreview();
@@ -1614,6 +1635,14 @@
                         localStorage.setItem('userName', userName);
                         document.getElementById('my-name').textContent = `名前: ${userName}`;
                     }
+                    break;
+                    
+                // ★モデル変更通知の処理（新規追加）
+                case 'model_changed':
+                    const modelSelect = document.getElementById('model-select');
+                    modelSelect.value = data.model;
+                    // システムメッセージは 'new_message' で別途受信されるため
+                    // ここではドロップダウンの更新のみ
                     break;
                     
                 case 'error':
