@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown Collaborative Editor v6.5</title>
+    <title>Markdown Collaborative Editor v6.6</title>
     <!-- Marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
@@ -102,6 +102,19 @@
             flex-wrap: wrap;
             gap: 15px;
             transition: background 0.3s ease;
+        }
+        
+        #header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        #header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
         }
         
         #room-info {
@@ -343,6 +356,72 @@
             width: 18px;
             height: 18px;
             cursor: pointer;
+        }
+        
+        /* AI Temperature Settings */
+        .temperature-slider-container {
+            padding: 10px;
+            background: var(--bg-primary);
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        
+        .temperature-slider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .temperature-slider input[type="range"] {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            outline: none;
+        }
+        
+        .temperature-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .temperature-slider input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .temperature-value {
+            min-width: 45px;
+            text-align: center;
+            font-weight: 600;
+            color: var(--accent-primary);
+        }
+        
+        .temperature-help {
+            margin-top: 10px;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        
+        .ai-preset-label {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-left: 5px;
         }
         
         .font-size-control {
@@ -714,6 +793,10 @@
                 align-items: flex-start;
             }
             
+            #header-left, #header-right {
+                width: 100%;
+            }
+            
             #controls {
                 width: 100%;
             }
@@ -780,38 +863,42 @@
         <div id="error-banner"></div>
         
         <div id="header">
-            <div id="room-info">
-                <div id="connection-status" title="接続状態"></div>
-                <div id="room-name">ルーム: default</div>
-                <div id="my-name" onclick="changeName()" title="クリックして名前を変更">名前: ユーザー</div>
-            </div>
-            
-            <!-- Controls -->
-            <div id="controls">
-                <div class="control-group">
-                    <label>🤖 モデル:</label>
-                    <select id="model-select" disabled title="使用中のAIモデル">
-                        <option value="">読み込み中...</option>
-                    </select>
-                </div>
-                <div class="control-group">
-                    <label>📄 テンプレート:</label>
-                    <select id="template-select" title="テンプレートを選択">
-                        <option value="">読み込み中...</option>
-                    </select>
-                    <button id="reload-templates" class="header-btn" title="テンプレート一覧を再読み込み">🔄</button>
-                </div>
-                <button id="download-markdown" class="header-btn" title="Markdownをダウンロード">
-                    📥 ダウンロード
-                </button>
+            <!-- Left side with hamburger menu -->
+            <div id="header-left">
                 <button id="menu-toggle" class="header-btn" title="設定を開く">
                     ☰ 設定
                 </button>
+                <div id="room-info">
+                    <div id="connection-status" title="接続状態"></div>
+                    <div id="room-name">ルーム: default</div>
+                    <div id="my-name" onclick="changeName()" title="クリックして名前を変更">名前: ユーザー</div>
+                </div>
             </div>
             
-            <div class="users">
-                <span id="user-count">1</span>人が参加中
-                <span id="user-list"></span>
+            <!-- Right side controls -->
+            <div id="header-right">
+                <div id="controls">
+                    <div class="control-group">
+                        <label>🤖 モデル:</label>
+                        <select id="model-select" disabled title="使用中のAIモデル">
+                            <option value="">読み込み中...</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>📄 テンプレート:</label>
+                        <select id="template-select" title="テンプレートを選択">
+                            <option value="">読み込み中...</option>
+                        </select>
+                        <button id="reload-templates" class="header-btn" title="テンプレート一覧を再読み込み">🔄</button>
+                    </div>
+                    <button id="download-markdown" class="header-btn" title="Markdownをダウンロード">
+                        📥 ダウンロード
+                    </button>
+                </div>
+                <div class="users">
+                    <span id="user-count">1</span>人が参加中
+                    <span id="user-list"></span>
+                </div>
             </div>
         </div>
         
@@ -821,6 +908,53 @@
             <div class="settings-header">
                 <h2>⚙️ 設定</h2>
                 <button class="close-btn" id="close-settings">×</button>
+            </div>
+            
+            <!-- AI Settings -->
+            <div class="setting-section">
+                <h3>🤖 AI設定</h3>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="ai-preset" value="0.1">
+                        正確 <span class="ai-preset-label">(0.1 - 最も一貫性のある応答)</span>
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="ai-preset" value="0.3" checked>
+                        バランス <span class="ai-preset-label">(0.3 - デフォルト)</span>
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="ai-preset" value="0.7">
+                        標準 <span class="ai-preset-label">(0.7 - 一般的な編集)</span>
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="ai-preset" value="1.2">
+                        創造的 <span class="ai-preset-label">(1.2 - より多様な応答)</span>
+                    </label>
+                </div>
+                <div class="setting-option">
+                    <label>
+                        <input type="radio" name="ai-preset" value="custom">
+                        カスタム <span class="ai-preset-label">(手動調整)</span>
+                    </label>
+                </div>
+                
+                <div class="temperature-slider-container">
+                    <div class="temperature-slider">
+                        <span>0.0</span>
+                        <input type="range" id="temperature-range" min="0" max="20" value="3">
+                        <span>2.0</span>
+                        <div class="temperature-value" id="temperature-value">0.3</div>
+                    </div>
+                    <div class="temperature-help">
+                        💡 値が低いほど一貫性のある応答になります。高い値は創造的ですが、予測が難しくなります。
+                    </div>
+                </div>
             </div>
             
             <!-- Chat Position -->
@@ -986,7 +1120,10 @@
             theme: 'light',
             fontSize: 14,
             markdownView: 'edit',
-            autoScroll: true
+            autoScroll: true,
+            // AI Settings
+            aiTemperature: 0.3,  // Changed default from 0.1 to 0.3
+            aiPreset: 'balance'   // Default preset
         };
         
         let userSettings = { ...DEFAULT_SETTINGS };
@@ -1034,6 +1171,25 @@
             document.querySelector(`input[name="theme"][value="${userSettings.theme}"]`).checked = true;
             document.querySelector(`input[name="markdown-view"][value="${userSettings.markdownView}"]`).checked = true;
             document.getElementById('auto-scroll').checked = userSettings.autoScroll;
+            
+            // AI Temperature settings
+            const tempValue = userSettings.aiTemperature;
+            const tempRange = document.getElementById('temperature-range');
+            tempRange.value = tempValue * 10; // Convert to 0-20 range
+            document.getElementById('temperature-value').textContent = tempValue.toFixed(1);
+            
+            // Set preset radio button
+            const presetRadios = document.querySelectorAll('input[name="ai-preset"]');
+            let presetFound = false;
+            presetRadios.forEach(radio => {
+                if (parseFloat(radio.value) === tempValue) {
+                    radio.checked = true;
+                    presetFound = true;
+                }
+            });
+            if (!presetFound) {
+                document.querySelector('input[name="ai-preset"][value="custom"]').checked = true;
+            }
         }
         
         // Apply markdown view setting
@@ -1084,6 +1240,37 @@
             document.getElementById('settings-menu').classList.remove('open');
             document.getElementById('menu-overlay').classList.remove('open');
         }
+        
+        // AI Temperature presets
+        document.querySelectorAll('input[name="ai-preset"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const value = e.target.value;
+                if (value !== 'custom') {
+                    const tempValue = parseFloat(value);
+                    userSettings.aiTemperature = tempValue;
+                    userSettings.aiPreset = e.target.value;
+                    
+                    // Update slider
+                    document.getElementById('temperature-range').value = tempValue * 10;
+                    document.getElementById('temperature-value').textContent = tempValue.toFixed(1);
+                    
+                    saveSettings();
+                }
+            });
+        });
+        
+        // Temperature slider
+        document.getElementById('temperature-range').addEventListener('input', (e) => {
+            const value = parseInt(e.target.value) / 10; // Convert from 0-20 to 0.0-2.0
+            userSettings.aiTemperature = value;
+            userSettings.aiPreset = 'custom';
+            document.getElementById('temperature-value').textContent = value.toFixed(1);
+            
+            // Select custom radio
+            document.querySelector('input[name="ai-preset"][value="custom"]').checked = true;
+            
+            saveSettings();
+        });
         
         // Chat position
         document.querySelectorAll('input[name="chat-position"]').forEach(radio => {
@@ -1500,17 +1687,28 @@
         }
         
         // ========================================
-        // Send Message
+        // Send Message (with Temperature setting)
         // ========================================
         function send() {
             const input = document.getElementById('input');
             const text = input.value.trim();
             
             if (text && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
+                // Check if this is an AI command and include temperature
+                const messageData = {
                     type: 'message',
                     text: text
-                }));
+                };
+                
+                // Add temperature setting for AI commands
+                const aiCommandPattern = /^@ai[\s　]+(.+)$/i;
+                if (aiCommandPattern.test(text)) {
+                    messageData.settings = {
+                        temperature: userSettings.aiTemperature
+                    };
+                }
+                
+                ws.send(JSON.stringify(messageData));
                 input.value = '';
             } else if (text && (!ws || ws.readyState !== WebSocket.OPEN)) {
                 showError('サーバーに接続されていません');
