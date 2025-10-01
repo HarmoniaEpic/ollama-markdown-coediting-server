@@ -195,11 +195,6 @@ export function sanitizeAIInstruction(instruction) {
         throw new Error('指示が空です');
     }
     
-    // 長さ制限（プロンプトインジェクション対策）
-    if (trimmed.length > 500) {
-        throw new Error('指示が長すぎます（最大500文字）');
-    }
-    
     // 危険なパターンをチェック（システムプロンプト改変を防ぐ）
     const dangerousPatterns = [
         /ignore\s+previous\s+instructions/i,
