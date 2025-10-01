@@ -1,7 +1,7 @@
 @echo off
 echo =======================================
 echo Markdown Editor セットアップスクリプト
-echo v6.6 (AI Temperature設定対応版)
+echo v6.7 (AIモデル選択対応版)
 echo =======================================
 
 REM .envファイルから設定を読み込み（存在する場合）
@@ -131,17 +131,22 @@ echo ブラウザでアクセス:
 echo   http://localhost:3000/?room=test^&name=あなたの名前
 echo.
 echo =======================================
-echo ★ v6.6 新機能
+echo ★ v6.7 新機能
 echo =======================================
 echo.
-echo [AI Temperature設定]
+echo [AIモデル自由選択]
+echo   - ヘッダーのドロップダウンからモデルを選択可能
+echo   - ルームごとに異なるモデルを使用可能
+echo   - リアルタイムでモデル切り替え
+echo.
+echo [AI指示の文字数制限撤廃]
+echo   - マルチバイト文字での長文指示が可能
+echo   - より詳細で複雑な編集指示に対応
+echo.
+echo [AI Temperature設定] (v6.6から継続)
 echo   - ハンバーガーメニュー（左上）から設定可能
 echo   - 0.0-2.0の範囲で創造性を調整
 echo   - デフォルト: 0.3（バランス）
-echo.
-echo [UIの改善]
-echo   - ハンバーガーメニューを左端に移動
-echo   - より直感的な設定アクセス
 echo.
 echo [Temperature設定の推奨値]
 echo   0.1 - 正確（フォーマット変更など）

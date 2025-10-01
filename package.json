@@ -1,9 +1,9 @@
 {
   "name": "markdown-editor",
-  "version": "6.6.0",
+  "version": "6.7.0",
   "type": "module",
   "main": "server.js",
-  "description": "Realtime Markdown Collaborative Editor with AI Temperature Control",
+  "description": "Realtime Markdown Collaborative Editor with AI Model Selection",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
@@ -24,7 +24,8 @@
     "websocket",
     "ai",
     "ollama",
-    "temperature"
+    "temperature",
+    "model-selection"
   ],
   "author": "HarmoniaEpic",
   "license": "MIT"
